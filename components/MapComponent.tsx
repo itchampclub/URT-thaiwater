@@ -16,8 +16,11 @@ interface MapComponentProps {
   onUserLocationChange: (loc: GeoLocation) => void;
   nearestStation: { station: WaterLevelData | null; distance: number };
   nearestRainStation: { station: RainData | null; distance: number };
+  worstStation: { station: WaterLevelData | null; distance: number };
+  worstRainStation: { station: RainData | null; distance: number };
   showWaterStations: boolean;
   showRainStations: boolean;
+  radius: number; // Radius in km
 }
 
 // Helper to handle map flyTo
@@ -112,23 +115,26 @@ const MapComponent: React.FC<MapComponentProps> = ({
   onUserLocationChange, 
   nearestStation,
   nearestRainStation,
+  worstStation,
+  worstRainStation,
   showWaterStations,
-  showRainStations
+  showRainStations,
+  radius
 }) => {
   const [selectedStationId, setSelectedStationId] = useState<number | null>(null);
 
-  // Calculate stations within 10km radius
+  // Calculate stations within radius (for visual lines only)
   const waterStationsInRadius = useMemo(() => {
     return stations.filter(s => 
-      calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long) <= 10
+      calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long) <= radius
     );
-  }, [stations, userLocation]);
+  }, [stations, userLocation, radius]);
 
   const rainStationsInRadius = useMemo(() => {
     return rainStations.filter(s => 
-      calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long) <= 10
+      calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long) <= radius
     );
-  }, [rainStations, userLocation]);
+  }, [rainStations, userLocation, radius]);
 
   return (
     <MapContainer 
@@ -145,10 +151,10 @@ const MapComponent: React.FC<MapComponentProps> = ({
       
       <MapController center={userLocation} />
 
-      {/* 10km Radius Shadow Cover */}
+      {/* Dynamic Radius Shadow Cover */}
       <Circle 
         center={[userLocation.lat, userLocation.lng]}
-        radius={10000} // 10km in meters
+        radius={radius * 1000} // convert km to meters
         pathOptions={{
           fillColor: '#64748B', // Slate-500
           fillOpacity: 0.1,
@@ -160,7 +166,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
       <UserPin position={userLocation} onChange={onUserLocationChange} />
 
-      {/* Lines to ALL Water Stations in 10km Radius */}
+      {/* Lines to ALL Water Stations in Radius */}
       {showWaterStations && waterStationsInRadius.map(s => (
          <Polyline
            key={`radius-line-water-${s.id}`}
@@ -176,7 +182,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
          />
       ))}
 
-      {/* Lines to ALL Rain Stations in 10km Radius */}
+      {/* Lines to ALL Rain Stations in Radius */}
       {showRainStations && rainStationsInRadius.map(s => (
          <Polyline
            key={`radius-line-rain-${s.id}`}
@@ -208,7 +214,27 @@ const MapComponent: React.FC<MapComponentProps> = ({
           }}
         >
           <Tooltip sticky direction="center" className="font-sans text-xs font-bold bg-white/90 text-slate-700 border-none shadow-md">
-            {nearestStation.distance.toFixed(1)} กม. (น้ำ)
+            {nearestStation.distance.toFixed(1)} กม. (ใกล้สุด)
+          </Tooltip>
+        </Polyline>
+      )}
+
+      {/* Connection Line to Worst Water Station (Risk Alert) - Only if different from Nearest */}
+      {showWaterStations && worstStation.station && worstStation.station.id !== nearestStation.station?.id && (
+        <Polyline
+          positions={[
+            [userLocation.lat, userLocation.lng],
+            [worstStation.station.station.tele_station_lat, worstStation.station.station.tele_station_long]
+          ]}
+          pathOptions={{
+            color: '#EF4444', // Red
+            weight: 2,
+            opacity: 0.8,
+            dashArray: '5, 5',
+          }}
+        >
+           <Tooltip sticky direction="center" className="font-sans text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+            จุดเสี่ยง! {worstStation.distance.toFixed(1)} กม.
           </Tooltip>
         </Polyline>
       )}
@@ -229,13 +255,34 @@ const MapComponent: React.FC<MapComponentProps> = ({
           }}
         />
       )}
+      
+      {/* Connection Line to Worst Rain Station - Only if different from Nearest */}
+      {showRainStations && worstRainStation.station && worstRainStation.station.id !== nearestRainStation.station?.id && worstRainStation.station.rain_24h > 35 && (
+        <Polyline 
+          positions={[
+            [userLocation.lat, userLocation.lng],
+            [worstRainStation.station.station.tele_station_lat, worstRainStation.station.station.tele_station_long]
+          ]}
+          pathOptions={{
+            color: '#F97316', // Orange
+            weight: 2,
+            opacity: 0.6,
+            dashArray: '5, 5',
+            lineCap: 'round'
+          }}
+        >
+           <Tooltip sticky direction="center" className="font-sans text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200">
+            ฝนหนัก! {worstRainStation.distance.toFixed(1)} กม.
+          </Tooltip>
+        </Polyline>
+      )}
 
       {/* Water Level Stations */}
       {showWaterStations && stations.map((station) => (
         <StationMarker
           key={`water-${station.id}`}
           data={station}
-          isSelected={selectedStationId === station.id || nearestStation.station?.id === station.id}
+          isSelected={selectedStationId === station.id || nearestStation.station?.id === station.id || worstStation.station?.id === station.id}
           onClick={() => setSelectedStationId(station.id)}
         />
       ))}
@@ -249,7 +296,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
         );
         
         // If overlapping, shift the rain marker slightly to the North-East (approx 150m)
-        // 0.0015 degrees is roughly 165 meters
         const offset = isOverlapping ? 0.0015 : 0;
         const lat = station.station.tele_station_lat + offset;
         const lng = station.station.tele_station_long + offset;

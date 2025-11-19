@@ -1,34 +1,55 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { MapPinIcon, ArrowPathIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon, ListBulletIcon, XMarkIcon, PaperAirplaneIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/solid';
+import { MapPinIcon, ArrowPathIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon, ListBulletIcon, XMarkIcon, PaperAirplaneIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, MapIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/solid';
 import MapComponent from './components/MapComponent';
 import RiskAnalysisCard from './components/RiskAnalysisCard';
 import { fetchWaterData, fetchRainData } from './services/waterService';
-import { findNearestStation, findNearestRainStation } from './utils/geoUtils';
+import { findNearestStation, findNearestRainStation, calculateDistance } from './utils/geoUtils';
 import { WaterLevelData, RainData, GeoLocation } from './types';
 
-const DEFAULT_SURAT_THANI_LOC: GeoLocation = { lat: 9.1380, lng: 99.3208 }; // City center
+// Configuration for 14 Southern Provinces
+const SOUTHERN_PROVINCES = [
+  { name: 'กระบี่', lat: 8.0863, lng: 98.9063 },
+  { name: 'ชุมพร', lat: 10.4930, lng: 99.1800 },
+  { name: 'ตรัง', lat: 7.5645, lng: 99.6239 },
+  { name: 'นครศรีธรรมราช', lat: 8.4333, lng: 99.9667 },
+  { name: 'นราธิวาส', lat: 6.4255, lng: 101.8253 },
+  { name: 'ปัตตานี', lat: 6.8696, lng: 101.2501 },
+  { name: 'พังงา', lat: 8.4501, lng: 98.5255 },
+  { name: 'พัทลุง', lat: 7.6167, lng: 100.0833 },
+  { name: 'ภูเก็ต', lat: 7.8804, lng: 98.3923 },
+  { name: 'ยะลา', lat: 6.5400, lng: 101.2800 },
+  { name: 'ระนอง', lat: 9.9529, lng: 98.6085 },
+  { name: 'สงขลา', lat: 7.1756, lng: 100.6143 },
+  { name: 'สตูล', lat: 6.6238, lng: 100.0674 },
+  { name: 'สุราษฎร์ธานี', lat: 9.1380, lng: 99.3208 },
+];
+
+const DEFAULT_PROVINCE = SOUTHERN_PROVINCES.find(p => p.name === 'สุราษฎร์ธานี')!;
+const ALL_PROVINCES_KEY = 'ALL';
 
 type ViewMode = 'split' | 'map' | 'analysis';
 
 const App: React.FC = () => {
-  const [stations, setStations] = useState<WaterLevelData[]>([]);
-  const [rainStations, setRainStations] = useState<RainData[]>([]);
+  // Data State (Holds data for ALL southern provinces)
+  const [allStations, setAllStations] = useState<WaterLevelData[]>([]);
+  const [allRainStations, setAllRainStations] = useState<RainData[]>([]);
+  
   const [loading, setLoading] = useState<boolean>(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   
-  // User location state (defaults to Surat Thani city center)
-  const [userLocation, setUserLocation] = useState<GeoLocation>(DEFAULT_SURAT_THANI_LOC);
+  // UI State
+  const [selectedProvinceName, setSelectedProvinceName] = useState<string>(DEFAULT_PROVINCE.name);
+  const [userLocation, setUserLocation] = useState<GeoLocation>({ lat: DEFAULT_PROVINCE.lat, lng: DEFAULT_PROVINCE.lng });
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
+  
+  // Settings State
+  const [radius, setRadius] = useState<number>(10); // km
 
   // Layer Visibility State
   const [showWater, setShowWater] = useState<boolean>(true);
   const [showRain, setShowRain] = useState<boolean>(true);
-  
-  // Menu State
-  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
-
-  // View Mode State (Split, Map Only, Analysis Only)
-  const [viewMode, setViewMode] = useState<ViewMode>('split');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -37,8 +58,8 @@ const App: React.FC = () => {
         fetchWaterData(),
         fetchRainData()
       ]);
-      setStations(waterData);
-      setRainStations(rainData);
+      setAllStations(waterData);
+      setAllRainStations(rainData);
       setLastUpdated(new Date());
     } catch (e) {
       console.error("Error loading data", e);
@@ -47,14 +68,77 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Calculate Nearest Stations
-  const nearestStation = useMemo(() => 
-    findNearestStation(userLocation, stations), 
-  [userLocation, stations]);
+  // Filter data based on selected province (for Display on Map - optional, currently Map uses this list)
+  const displayedStations = useMemo(() => {
+    if (selectedProvinceName === ALL_PROVINCES_KEY) return allStations;
+    return allStations.filter(s => s.geocode.province_name.th.includes(selectedProvinceName));
+  }, [allStations, selectedProvinceName]);
 
-  const nearestRainStation = useMemo(() => 
-    findNearestRainStation(userLocation, rainStations),
-  [userLocation, rainStations]);
+  const displayedRainStations = useMemo(() => {
+    if (selectedProvinceName === ALL_PROVINCES_KEY) return allRainStations;
+    return allRainStations.filter(s => s.geocode.province_name.th.includes(selectedProvinceName));
+  }, [allRainStations, selectedProvinceName]);
+
+  // --- Analysis Logic: Filter by Radius & Find Nearest/Worst ---
+  const { nearestWater, worstWater, nearestRain, worstRain } = useMemo(() => {
+    // 1. Calculate distance for ALL stations (globally) to ensure analysis covers the radius accurately
+    // irrespective of the selected province filter (which is for visual decluttering).
+    // STRICTLY FILTER by radius here.
+    const waterInRadius = allStations.map(s => ({
+      station: s,
+      distance: calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long)
+    })).filter(x => x.distance <= radius);
+
+    const rainInRadius = allRainStations.map(s => ({
+      station: s,
+      distance: calculateDistance(userLocation.lat, userLocation.lng, s.station.tele_station_lat, s.station.tele_station_long)
+    })).filter(x => x.distance <= radius);
+
+    // 2. Find Nearest (Sort by distance ASC)
+    waterInRadius.sort((a, b) => a.distance - b.distance);
+    rainInRadius.sort((a, b) => a.distance - b.distance);
+
+    const nearestWater = waterInRadius[0] || null;
+    const nearestRain = rainInRadius[0] || null;
+
+    // 3. Find Worst Water (Sort by Situation Level DESC, then Distance ASC)
+    const sortedWaterRisk = [...waterInRadius].sort((a, b) => {
+       if (b.station.situation_level !== a.station.situation_level) {
+         return b.station.situation_level - a.station.situation_level;
+       }
+       return a.distance - b.distance;
+    });
+    const worstWater = sortedWaterRisk[0] || null;
+
+    // 4. Find Worst Rain (Sort by Rain Amount DESC)
+    const sortedRainRisk = [...rainInRadius].sort((a, b) => b.station.rain_24h - a.station.rain_24h);
+    const worstRain = sortedRainRisk[0] || null;
+
+    return { nearestWater, worstWater, nearestRain, worstRain };
+
+  }, [allStations, allRainStations, userLocation, radius]);
+
+  // Map Component Helper Objects
+  const mapNearestStation = useMemo(() => ({
+    station: nearestWater?.station || null,
+    distance: nearestWater?.distance || 0
+  }), [nearestWater]);
+
+  const mapNearestRainStation = useMemo(() => ({
+    station: nearestRain?.station || null,
+    distance: nearestRain?.distance || 0
+  }), [nearestRain]);
+
+  const mapWorstStation = useMemo(() => ({
+    station: worstWater?.station || null,
+    distance: worstWater?.distance || 0
+  }), [worstWater]);
+
+  const mapWorstRainStation = useMemo(() => ({
+    station: worstRain?.station || null,
+    distance: worstRain?.distance || 0
+  }), [worstRain]);
+
 
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
@@ -79,19 +163,28 @@ const App: React.FC = () => {
     );
   };
 
-  // Reset analysis if user moves pin manually
+  const handleProvinceChange = (provinceName: string) => {
+    setSelectedProvinceName(provinceName);
+    
+    if (provinceName === ALL_PROVINCES_KEY) {
+      setUserLocation({ lat: 8.5, lng: 99.5 }); // Approx center of South
+    } else {
+      const province = SOUTHERN_PROVINCES.find(p => p.name === provinceName);
+      if (province) {
+        setUserLocation({ lat: province.lat, lng: province.lng });
+      }
+    }
+  };
+
   const handleUserLocationChange = (loc: GeoLocation) => {
     setUserLocation(loc);
   };
 
   useEffect(() => {
     loadData();
-    // Try to locate on mount
-    handleLocateMe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Helper to toggle modes
   const toggleMapMaximize = () => {
     setViewMode(prev => prev === 'map' ? 'split' : 'map');
   };
@@ -109,12 +202,12 @@ const App: React.FC = () => {
              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-blue-200 shadow-lg">
                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
                   <path fillRule="evenodd" d="M12.97 3.97a.75.75 0 011.06 0l7.5 7.5a.75.75 0 010 1.06l-7.5 7.5a.75.75 0 01-1.06-1.06l6.22-6.22H3a.75.75 0 010-1.5h16.19l-6.22-6.22a.75.75 0 010-1.06z" clipRule="evenodd" />
-                  <path d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" />
+                  <path d="M11.54 22.351l.07.04.028.016a.76.76 0 00.723 0l.028-.015.071-.041a16.975 16.975 0 001.144-.742 19.58 19.58 0 002.683-2.282c1.944-1.99 3.963-4.98 3.963-4.98 3.963-8.827a8.25 8.25 0 00-16.5 0c0 3.846 2.02 6.837 3.963 8.827a19.58 19.58 0 002.682 2.282 16.975 16.975 0 001.145.742zM12 13.5a3 3 0 100-6 3 3 0 000 6z" />
                </svg>
              </div>
              <div>
-               <h1 className="text-lg font-bold text-slate-800 leading-tight">Surat Water Watch</h1>
-               <p className="text-xs text-slate-500">ระบบติดตามสถานการณ์น้ำสุราษฎร์ธานี</p>
+               <h1 className="text-lg font-bold text-slate-800 leading-tight">Southern Water Watch</h1>
+               <p className="text-xs text-slate-500">ระบบติดตามสถานการณ์น้ำภาคใต้</p>
              </div>
           </div>
           
@@ -128,7 +221,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Main Content Area - Responsive Grid */}
+      {/* Main Content Area */}
       <main className="flex-1 relative overflow-hidden flex flex-col lg:flex-row">
         
         {/* Left Panel: Map */}
@@ -138,14 +231,17 @@ const App: React.FC = () => {
           ${viewMode === 'map' ? 'w-full h-full' : 'w-full h-[55vh] lg:h-full lg:w-2/3'}
         `}>
            <MapComponent 
-             stations={stations}
-             rainStations={rainStations} 
+             stations={displayedStations}
+             rainStations={displayedRainStations} 
              userLocation={userLocation}
              onUserLocationChange={handleUserLocationChange}
-             nearestStation={nearestStation}
-             nearestRainStation={nearestRainStation}
+             nearestStation={mapNearestStation}
+             nearestRainStation={mapNearestRainStation}
+             worstStation={mapWorstStation}
+             worstRainStation={mapWorstRainStation}
              showWaterStations={showWater}
              showRainStations={showRain}
+             radius={radius}
            />
            
            {/* Floating Locate Button */}
@@ -192,7 +288,7 @@ const App: React.FC = () => {
 
               {/* Full Menu Panel */}
               {isMenuOpen && (
-                <div className="bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-slate-200 text-xs space-y-2 min-w-[200px] animate-in fade-in zoom-in-95 duration-200 origin-top-right">
+                <div className="bg-white/95 backdrop-blur-sm p-3 rounded-lg shadow-lg border border-slate-200 text-xs space-y-2 min-w-[260px] animate-in fade-in zoom-in-95 duration-200 origin-top-right max-h-[80vh] overflow-y-auto">
                   
                   <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-200">
                     <span className="font-bold text-slate-700 flex items-center gap-1">
@@ -206,7 +302,45 @@ const App: React.FC = () => {
                     </button>
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-4">
+                    {/* Province Selector */}
+                    <div>
+                      <div className="font-semibold text-slate-500 mb-2 text-[10px] uppercase tracking-wider flex items-center gap-1">
+                        <MapIcon className="w-3 h-3"/> เลือกจังหวัด
+                      </div>
+                      <select 
+                        value={selectedProvinceName}
+                        onChange={(e) => handleProvinceChange(e.target.value)}
+                        className="w-full p-2 bg-white border border-slate-300 rounded-md text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+                      >
+                        <option value={ALL_PROVINCES_KEY}>ทั้งหมด (14 จังหวัด)</option>
+                        {SOUTHERN_PROVINCES.map((p) => (
+                          <option key={p.name} value={p.name}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Radius Slider */}
+                    <div>
+                      <div className="font-semibold text-slate-500 mb-2 text-[10px] uppercase tracking-wider flex items-center gap-1 justify-between">
+                        <span className="flex items-center gap-1"><AdjustmentsHorizontalIcon className="w-3 h-3"/> รัศมีครอบคลุม</span>
+                        <span className="text-blue-600 font-bold">{radius} กม.</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="10" 
+                        max="50" 
+                        step="1"
+                        value={radius} 
+                        onChange={(e) => setRadius(Number(e.target.value))}
+                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                        <span>10 กม.</span>
+                        <span>50 กม.</span>
+                      </div>
+                    </div>
+
                     <div>
                       <div className="font-semibold text-slate-500 mb-2 text-[10px] uppercase tracking-wider">แสดงชั้นข้อมูล</div>
                       <div className="flex flex-col gap-2">
@@ -234,17 +368,6 @@ const App: React.FC = () => {
                             สถานีฝน
                           </span>
                         </label>
-                        
-                        <button
-                          onClick={handleLocateMe}
-                          disabled={isLocating}
-                          className="flex items-center gap-2 w-full text-left p-1.5 mt-1 bg-blue-50 text-blue-700 rounded hover:bg-blue-100 transition-colors group"
-                        >
-                           <div className="bg-white p-1 rounded-full shadow-sm group-hover:scale-110 transition-transform">
-                              <PaperAirplaneIcon className={`w-3 h-3 ${isLocating ? 'animate-spin' : ''}`} />
-                           </div>
-                           <span className="font-semibold">ตำแหน่งปัจจุบัน</span>
-                        </button>
                       </div>
                     </div>
 
@@ -291,10 +414,15 @@ const App: React.FC = () => {
             
             {/* Analysis Card */}
             <div>
-               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">วิเคราะห์ความเสี่ยงพื้นที่คุณ</h3>
+               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">
+                 วิเคราะห์ความเสี่ยง (รัศมี {radius} กม.)
+               </h3>
                <RiskAnalysisCard 
-                  nearestStation={nearestStation} 
-                  nearestRainStation={nearestRainStation}
+                  nearestWater={nearestWater}
+                  worstWater={worstWater}
+                  nearestRain={nearestRain}
+                  worstRain={worstRain}
+                  radius={radius}
                />
             </div>
 
@@ -305,9 +433,10 @@ const App: React.FC = () => {
                   <span>คำแนะนำ</span>
                </div>
                <ul className="list-disc pl-4 space-y-1 text-xs">
+                 <li>ระบบจะวิเคราะห์ข้อมูลจากทั้ง <b>"จุดที่ใกล้ที่สุด"</b> และ <b>"จุดที่มีความเสี่ยงสูงสุด"</b></li>
+                 <li>ข้อมูลการวิเคราะห์จะแสดงเฉพาะจุดที่อยู่ใน <b>รัศมี {radius} กม.</b> เท่านั้น</li>
+                 <li>เลือก "จังหวัด" ที่เมนูมุมขวาบนเพื่อเปลี่ยนพื้นที่ดูข้อมูลหลัก</li>
                  <li>ลากหมุดสีน้ำเงินบนแผนที่เพื่อตรวจสอบความเสี่ยงในพื้นที่อื่นๆ</li>
-                 <li>ใช้เมนูมุมขวาบนของแผนที่เพื่อ เปิด/ปิด ชั้นข้อมูลและค้นหาตำแหน่งของคุณ</li>
-                 <li>สีของไอคอนฝน (🌧️) แสดงปริมาณความรุนแรง (ฟ้า=เบา, ส้ม=หนัก, แดง=หนักมาก)</li>
                  <li>ข้อมูลอ้างอิงจาก: คลังข้อมูลน้ำแห่งชาติ (ThaiWater)</li>
                </ul>
             </div>
