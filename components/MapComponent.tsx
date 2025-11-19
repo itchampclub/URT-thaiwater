@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, Marker, Popup, Polyline, Tooltip, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import { WaterLevelData, RainData, GeoLocation } from '../types';
@@ -29,12 +29,34 @@ const MapController: React.FC<{ center: GeoLocation }> = ({ center }) => {
   return null;
 };
 
+// Helper to automatically invalidate map size when container resizes
+const MapResizer: React.FC = () => {
+  const map = useMap();
+  
+  useEffect(() => {
+    const observer = new ResizeObserver(() => {
+      // This fixes the grey tiles issue when map container changes size
+      map.invalidateSize();
+    });
+    
+    const container = map.getContainer();
+    if (container) {
+      observer.observe(container);
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [map]);
+
+  return null;
+};
+
 // Custom Draggable Marker for User
 const UserPin: React.FC<{ position: GeoLocation; onChange: (loc: GeoLocation) => void }> = ({ position, onChange }) => {
   const [draggable, setDraggable] = useState(true);
-  const map = useMap();
-
-  const markerRef = React.useRef<L.Marker>(null);
+  
+  const markerRef = useRef<L.Marker>(null);
 
   const eventHandlers = useMemo(
     () => ({
@@ -43,11 +65,12 @@ const UserPin: React.FC<{ position: GeoLocation; onChange: (loc: GeoLocation) =>
         if (marker != null) {
             const latLng = marker.getLatLng();
             onChange({ lat: latLng.lat, lng: latLng.lng });
-            map.flyTo(latLng);
+            // Note: We don't need to call map.flyTo() here because onChange updates the state,
+            // which triggers MapController to flyTo the new position.
         }
       },
     }),
-    [onChange, map],
+    [onChange],
   );
 
   // Custom HTML Icon for the user pin
@@ -114,6 +137,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
       scrollWheelZoom={true} 
       className="w-full h-full z-0 rounded-lg overflow-hidden shadow-inner"
     >
+      <MapResizer />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

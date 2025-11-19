@@ -91,10 +91,6 @@ const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Count critical stations
-  const criticalCount = stations.filter(s => s.situation_level >= 5).length;
-  const warningCount = stations.filter(s => s.situation_level === 4).length;
-
   // Helper to toggle modes
   const toggleMapMaximize = () => {
     setViewMode(prev => prev === 'map' ? 'split' : 'map');
@@ -293,18 +289,6 @@ const App: React.FC = () => {
 
           <div className="p-4 lg:p-6 pt-2 overflow-y-auto flex-1 space-y-6">
             
-            {/* Summary Stats */}
-            <div className="grid grid-cols-2 gap-3">
-               <div className="bg-red-50 p-3 rounded-lg border border-red-100 text-center">
-                 <div className="text-red-600 font-bold text-2xl">{criticalCount}</div>
-                 <div className="text-red-800 text-xs font-medium">จุดวิกฤติ (น้ำ)</div>
-               </div>
-               <div className="bg-blue-50 p-3 rounded-lg border border-blue-100 text-center">
-                 <div className="text-blue-600 font-bold text-2xl">{warningCount}</div>
-                 <div className="text-blue-800 text-xs font-medium">เฝ้าระวัง (น้ำ)</div>
-               </div>
-            </div>
-
             {/* Analysis Card */}
             <div>
                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">วิเคราะห์ความเสี่ยงพื้นที่คุณ</h3>
