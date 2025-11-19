@@ -3,8 +3,7 @@ import { MapPinIcon, ArrowPathIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIc
 import MapComponent from './components/MapComponent';
 import RiskAnalysisCard from './components/RiskAnalysisCard';
 import { fetchWaterData, fetchRainData } from './services/waterService';
-import { analyzeFloodRisk } from './services/aiService';
-import { findNearestStation, findNearestRainStation, findNearbyRainStations } from './utils/geoUtils';
+import { findNearestStation, findNearestRainStation } from './utils/geoUtils';
 import { WaterLevelData, RainData, GeoLocation } from './types';
 
 const DEFAULT_SURAT_THANI_LOC: GeoLocation = { lat: 9.1380, lng: 99.3208 }; // City center
@@ -18,10 +17,6 @@ const App: React.FC = () => {
   // User location state (defaults to Surat Thani city center)
   const [userLocation, setUserLocation] = useState<GeoLocation>(DEFAULT_SURAT_THANI_LOC);
   const [isLocating, setIsLocating] = useState<boolean>(false);
-
-  // AI Analysis State
-  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
 
   // Layer Visibility State
   const [showWater, setShowWater] = useState<boolean>(true);
@@ -70,8 +65,6 @@ const App: React.FC = () => {
           lng: position.coords.longitude
         });
         setIsLocating(false);
-        // Reset AI analysis when location changes significantly
-        setAiAnalysis(null);
       },
       (error) => {
         console.error(error);
@@ -81,32 +74,9 @@ const App: React.FC = () => {
     );
   };
 
-  const handleAiAnalysis = async () => {
-    if (!nearestStation.station) return;
-    
-    setIsAnalyzing(true);
-    try {
-      // Find top 5 closest rain stations within 50km for context
-      const nearbyRain = findNearbyRainStations(userLocation, rainStations, 50);
-
-      const result = await analyzeFloodRisk(
-        nearestStation.station, 
-        nearestStation.distance,
-        nearbyRain
-      );
-      setAiAnalysis(result);
-    } catch (e) {
-      console.error(e);
-      setAiAnalysis("Sorry, could not generate analysis at this time.");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  };
-
   // Reset analysis if user moves pin manually
   const handleUserLocationChange = (loc: GeoLocation) => {
     setUserLocation(loc);
-    setAiAnalysis(null);
   };
 
   useEffect(() => {
@@ -298,9 +268,6 @@ const App: React.FC = () => {
                <RiskAnalysisCard 
                   nearestStation={nearestStation} 
                   nearestRainStation={nearestRainStation}
-                  onAnalyze={handleAiAnalysis}
-                  isAnalyzing={isAnalyzing}
-                  analysisResult={aiAnalysis}
                />
             </div>
 
@@ -314,7 +281,6 @@ const App: React.FC = () => {
                  <li>ลากหมุดสีน้ำเงินบนแผนที่เพื่อตรวจสอบความเสี่ยงในพื้นที่อื่นๆ</li>
                  <li>ใช้เมนูมุมขวาบนของแผนที่เพื่อ เปิด/ปิด ชั้นข้อมูลและค้นหาตำแหน่งของคุณ</li>
                  <li>สีของไอคอนฝน (🌧️) แสดงปริมาณความรุนแรง (ฟ้า=เบา, ส้ม=หนัก, แดง=หนักมาก)</li>
-                 <li>กดปุ่ม <span className="font-bold">ขอคำแนะนำจาก AI</span> เพื่อวิเคราะห์ข้อมูลน้ำและปริมาณฝนรอบๆ ตัวคุณ</li>
                  <li>ข้อมูลอ้างอิงจาก: คลังข้อมูลน้ำแห่งชาติ (ThaiWater)</li>
                </ul>
             </div>

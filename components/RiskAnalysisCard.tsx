@@ -1,23 +1,15 @@
 import React from 'react';
 import { WaterLevelData, RainData } from '../types';
 import { getSituationColor, getSituationText, getRainSeverityColor } from '../utils/geoUtils';
-import { SparklesIcon } from '@heroicons/react/24/solid';
-import Markdown from 'react-markdown';
 
 interface RiskAnalysisCardProps {
   nearestStation: { station: WaterLevelData | null; distance: number };
   nearestRainStation: { station: RainData | null; distance: number };
-  onAnalyze: () => void;
-  isAnalyzing: boolean;
-  analysisResult: string | null;
 }
 
 const RiskAnalysisCard: React.FC<RiskAnalysisCardProps> = ({ 
   nearestStation, 
-  nearestRainStation,
-  onAnalyze, 
-  isAnalyzing, 
-  analysisResult 
+  nearestRainStation
 }) => {
   const { station, distance } = nearestStation;
   const rainStation = nearestRainStation.station;
@@ -135,48 +127,6 @@ const RiskAnalysisCard: React.FC<RiskAnalysisCardProps> = ({
           </div>
         )}
 
-      </div>
-
-      {/* AI Analysis Section */}
-      <div className="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-xl p-1 shadow-sm border border-indigo-100">
-        {!analysisResult ? (
-           <button 
-            onClick={onAnalyze}
-            disabled={isAnalyzing}
-            className="w-full group relative flex items-center justify-center gap-2 py-3 px-4 bg-white hover:bg-indigo-50 rounded-lg text-indigo-700 font-semibold transition-all duration-200 disabled:opacity-70"
-           >
-             {isAnalyzing ? (
-               <>
-                 <span className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                 <span>กำลังวิเคราะห์ข้อมูล...</span>
-               </>
-             ) : (
-               <>
-                 <SparklesIcon className="w-5 h-5 text-indigo-500 group-hover:text-indigo-600 group-hover:scale-110 transition-transform" />
-                 <span>ขอคำแนะนำจาก AI</span>
-               </>
-             )}
-           </button>
-        ) : (
-          <div className="bg-white rounded-lg p-4 text-slate-700 text-sm leading-relaxed animate-in fade-in slide-in-from-bottom-2 duration-500">
-             <div className="flex items-center gap-2 mb-3 pb-2 border-b border-indigo-100">
-                <div className="p-1.5 bg-indigo-100 rounded-md">
-                  <SparklesIcon className="w-4 h-4 text-indigo-600" />
-                </div>
-                <h4 className="font-bold text-indigo-900">AI Analysis</h4>
-             </div>
-             <div className="prose prose-sm prose-indigo max-w-none">
-               <Markdown>{analysisResult}</Markdown>
-             </div>
-             <button 
-               onClick={onAnalyze} 
-               disabled={isAnalyzing}
-               className="mt-4 text-xs text-indigo-500 hover:text-indigo-700 font-medium underline decoration-indigo-200 hover:decoration-indigo-500 transition-all"
-             >
-               {isAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ใหม่'}
-             </button>
-          </div>
-        )}
       </div>
     </div>
   );
