@@ -1,0 +1,7 @@
+{
+  "name": "Surat Thani Water Watch",
+  "description": "Real-time water level monitoring and flood risk analysis for Surat Thani using ThaiWater data.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
