@@ -26,22 +26,22 @@ const RainMarker: React.FC<RainMarkerProps> = ({ data, position }) => {
     html: `
       <div style="
         background-color: ${backgroundColor}; 
-        border: 2px solid ${severityColor}; 
+        border: 1.5px solid ${severityColor}; 
         border-radius: 50%; 
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2); 
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2); 
         display: flex; 
         align-items: center; 
         justify-content: center; 
-        width: 32px; 
-        height: 32px;
+        width: 22px; 
+        height: 22px;
         transition: transform 0.2s;
       ">
-        <div style="font-size: 18px; filter: drop-shadow(0 1px 0px rgba(255,255,255,0.8));">🌧️</div>
+        <div style="font-size: 12px; filter: drop-shadow(0 1px 0px rgba(255,255,255,0.8)); line-height: 1;">🌧️</div>
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-    popupAnchor: [0, -16]
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11]
   });
 
   // Use provided position or fallback to station coordinates
@@ -55,7 +55,7 @@ const RainMarker: React.FC<RainMarkerProps> = ({ data, position }) => {
       position={markerPosition}
       icon={icon}
     >
-      <Tooltip direction="top" offset={[0, -16]} opacity={1}>
+      <Tooltip direction="top" offset={[0, -11]} opacity={1}>
         <span className="font-bold font-sans" style={{ color: severityColor }}>
           ฝน: {rainAmount} มม.
         </span>
