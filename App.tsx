@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { MapPinIcon, ArrowPathIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon, ListBulletIcon, XMarkIcon, PaperAirplaneIcon } from '@heroicons/react/24/solid';
+import { MapPinIcon, ArrowPathIcon, ExclamationTriangleIcon, EyeIcon, EyeSlashIcon, ListBulletIcon, XMarkIcon, PaperAirplaneIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/react/24/solid';
 import MapComponent from './components/MapComponent';
 import RiskAnalysisCard from './components/RiskAnalysisCard';
 import { fetchWaterData, fetchRainData } from './services/waterService';
@@ -7,6 +7,8 @@ import { findNearestStation, findNearestRainStation } from './utils/geoUtils';
 import { WaterLevelData, RainData, GeoLocation } from './types';
 
 const DEFAULT_SURAT_THANI_LOC: GeoLocation = { lat: 9.1380, lng: 99.3208 }; // City center
+
+type ViewMode = 'split' | 'map' | 'analysis';
 
 const App: React.FC = () => {
   const [stations, setStations] = useState<WaterLevelData[]>([]);
@@ -24,6 +26,9 @@ const App: React.FC = () => {
   
   // Menu State
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(true);
+
+  // View Mode State (Split, Map Only, Analysis Only)
+  const [viewMode, setViewMode] = useState<ViewMode>('split');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -90,6 +95,15 @@ const App: React.FC = () => {
   const criticalCount = stations.filter(s => s.situation_level >= 5).length;
   const warningCount = stations.filter(s => s.situation_level === 4).length;
 
+  // Helper to toggle modes
+  const toggleMapMaximize = () => {
+    setViewMode(prev => prev === 'map' ? 'split' : 'map');
+  };
+
+  const toggleAnalysisMaximize = () => {
+    setViewMode(prev => prev === 'analysis' ? 'split' : 'analysis');
+  };
+
   return (
     <div className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans">
       {/* Header */}
@@ -121,8 +135,12 @@ const App: React.FC = () => {
       {/* Main Content Area - Responsive Grid */}
       <main className="flex-1 relative overflow-hidden flex flex-col lg:flex-row">
         
-        {/* Left Panel: Map (Takes priority on mobile) */}
-        <div className="relative w-full h-[55vh] lg:h-full lg:w-2/3 bg-slate-200">
+        {/* Left Panel: Map */}
+        <div className={`
+          relative bg-slate-200 transition-all duration-300 ease-in-out
+          ${viewMode === 'analysis' ? 'hidden' : ''}
+          ${viewMode === 'map' ? 'w-full h-full' : 'w-full h-[55vh] lg:h-full lg:w-2/3'}
+        `}>
            <MapComponent 
              stations={stations}
              rainStations={rainStations} 
@@ -134,7 +152,7 @@ const App: React.FC = () => {
              showRainStations={showRain}
            />
            
-           {/* Floating Locate Button (Bottom Right) - Kept for quick access */}
+           {/* Floating Locate Button */}
            <button 
              onClick={handleLocateMe}
              disabled={isLocating}
@@ -148,18 +166,33 @@ const App: React.FC = () => {
              <span className="hidden sm:inline font-medium text-sm">ตำแหน่งปัจจุบัน</span>
            </button>
 
-            {/* Controls & Legend Overlay (Top Right) */}
-           <div className="absolute top-4 right-4 z-[1000] flex flex-col items-end">
+            {/* Controls Overlay (Top Right) */}
+           <div className="absolute top-4 right-4 z-[1000] flex flex-col items-end gap-2">
               
-              {/* Toggle Button (Visible when closed) */}
-              {!isMenuOpen && (
-                <button 
-                  onClick={() => setIsMenuOpen(true)}
-                  className="bg-white/90 backdrop-blur-md p-2 rounded-lg shadow-md border border-slate-200 text-slate-700 hover:bg-white hover:text-blue-600 transition-all active:scale-95"
-                >
-                  <ListBulletIcon className="w-6 h-6" />
-                </button>
-              )}
+              <div className="flex gap-2">
+                 {/* Map Maximize Button */}
+                 <button 
+                   onClick={toggleMapMaximize}
+                   className="bg-white/90 backdrop-blur-md p-2 rounded-lg shadow-md border border-slate-200 text-slate-700 hover:bg-white hover:text-blue-600 transition-all active:scale-95"
+                   title={viewMode === 'map' ? "ย่อแผนที่" : "ขยายแผนที่เต็มจอ"}
+                 >
+                   {viewMode === 'map' ? (
+                     <ArrowsPointingInIcon className="w-6 h-6" />
+                   ) : (
+                     <ArrowsPointingOutIcon className="w-6 h-6" />
+                   )}
+                 </button>
+
+                 {/* Toggle Menu Button */}
+                 {!isMenuOpen && (
+                   <button 
+                     onClick={() => setIsMenuOpen(true)}
+                     className="bg-white/90 backdrop-blur-md p-2 rounded-lg shadow-md border border-slate-200 text-slate-700 hover:bg-white hover:text-blue-600 transition-all active:scale-95"
+                   >
+                     <ListBulletIcon className="w-6 h-6" />
+                   </button>
+                 )}
+              </div>
 
               {/* Full Menu Panel */}
               {isMenuOpen && (
@@ -206,7 +239,6 @@ const App: React.FC = () => {
                           </span>
                         </label>
                         
-                        {/* New Navigate Button inside list */}
                         <button
                           onClick={handleLocateMe}
                           disabled={isLocating}
@@ -230,15 +262,6 @@ const App: React.FC = () => {
                         <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#F97316]"></div> ฝนตกหนัก</div>
                         <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-[#EF4444]"></div> ฝนตกหนักมาก</div>
                       </div>
-                      <div className="mt-2 pt-2 border-t border-slate-200">
-                          <div className="flex items-center gap-2">
-                              <div className="relative w-3 h-3 flex-none">
-                                <div className="absolute w-3 h-3 bg-blue-600 rounded-full animate-ping opacity-30"></div>
-                                <div className="absolute w-3 h-3 bg-blue-600 rounded-full border border-white"></div>
-                              </div>
-                              ตำแหน่งคุณ
-                          </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -247,8 +270,28 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Panel: Data & Analysis */}
-        <div className="w-full h-[45vh] lg:h-full lg:w-1/3 flex flex-col bg-white border-l border-slate-200 shadow-xl z-10">
-          <div className="p-4 lg:p-6 overflow-y-auto flex-1 space-y-6">
+        <div className={`
+          flex flex-col bg-white border-l border-slate-200 shadow-xl z-10 transition-all duration-300 ease-in-out
+          ${viewMode === 'map' ? 'hidden' : ''}
+          ${viewMode === 'analysis' ? 'w-full h-full' : 'w-full h-[45vh] lg:h-full lg:w-1/3'}
+        `}>
+          
+          {/* Panel Header with Expand Button */}
+          <div className="p-4 pb-0 flex justify-end">
+             <button 
+               onClick={toggleAnalysisMaximize}
+               className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full transition-colors"
+               title={viewMode === 'analysis' ? "ย่อหน้าต่าง" : "ขยายเต็มจอ"}
+             >
+               {viewMode === 'analysis' ? (
+                 <ArrowsPointingInIcon className="w-5 h-5" />
+               ) : (
+                 <ArrowsPointingOutIcon className="w-5 h-5" />
+               )}
+             </button>
+          </div>
+
+          <div className="p-4 lg:p-6 pt-2 overflow-y-auto flex-1 space-y-6">
             
             {/* Summary Stats */}
             <div className="grid grid-cols-2 gap-3">
